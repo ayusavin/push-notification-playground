@@ -10,6 +10,18 @@ interface Notification {
   timestamp: string;
 }
 
+// Type definition for rate limit
+interface RateLimit {
+  count: number;
+  resetAt: number;
+}
+
+// Rate limit configuration
+const RATE_LIMIT = {
+  MAX_REQUESTS: 10, // Maximum requests allowed
+  WINDOW_MS: 60 * 1000, // Time window in milliseconds (1 minute)
+};
+
 // Generate a random UUID
 function generateUUID(): string {
   return crypto.randomUUID();
@@ -17,6 +29,35 @@ function generateUUID(): string {
 
 // Initialize Deno KV
 const kv = await Deno.openKv();
+
+// Check and update rate limit for a token
+async function checkRateLimit(token: string): Promise<{ allowed: boolean; limit: RateLimit }> {
+  const now = Date.now();
+  const rateLimitKey = ["ratelimit", token];
+  
+  // Get current rate limit info
+  const rateLimitEntry = await kv.get<RateLimit>(rateLimitKey);
+  let rateLimit = rateLimitEntry.value;
+  
+  // If no rate limit exists or it's expired, create a new one
+  if (!rateLimit || rateLimit.resetAt < now) {
+    rateLimit = {
+      count: 0,
+      resetAt: now + RATE_LIMIT.WINDOW_MS,
+    };
+  }
+  
+  // Check if limit is reached
+  const allowed = rateLimit.count < RATE_LIMIT.MAX_REQUESTS;
+  
+  // Increment count if allowed
+  if (allowed) {
+    rateLimit.count++;
+    await kv.set(rateLimitKey, rateLimit, { expireIn: RATE_LIMIT.WINDOW_MS });
+  }
+  
+  return { allowed, limit: rateLimit };
+}
 
 // Store notification in KV
 async function storeNotification(token: string, message: string) {
@@ -48,6 +89,32 @@ async function handler(req: Request): Promise<Response> {
       }
       
       const token = authHeader.replace("Bearer ", "");
+      
+      // Check rate limit
+      const { allowed, limit } = await checkRateLimit(token);
+      if (!allowed) {
+        const resetInSeconds = Math.ceil((limit.resetAt - Date.now()) / 1000);
+        return new Response(
+          JSON.stringify({
+            error: "Rate limit exceeded",
+            message: `Too many requests. Try again in ${resetInSeconds} seconds.`,
+            limit: RATE_LIMIT.MAX_REQUESTS,
+            remaining: 0,
+            resetAt: new Date(limit.resetAt).toISOString(),
+          }),
+          {
+            status: Status.TooManyRequests,
+            headers: {
+              "Content-Type": "application/json",
+              "X-RateLimit-Limit": RATE_LIMIT.MAX_REQUESTS.toString(),
+              "X-RateLimit-Remaining": "0",
+              "X-RateLimit-Reset": Math.ceil(limit.resetAt / 1000).toString(),
+              "Retry-After": resetInSeconds.toString(),
+            }
+          }
+        );
+      }
+      
       const { message } = await req.json();
       
       if (!message) {
@@ -56,7 +123,12 @@ async function handler(req: Request): Promise<Response> {
       
       const notification = await storeNotification(token, message);
       return new Response(JSON.stringify(notification), {
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-RateLimit-Limit": RATE_LIMIT.MAX_REQUESTS.toString(),
+          "X-RateLimit-Remaining": (RATE_LIMIT.MAX_REQUESTS - limit.count).toString(),
+          "X-RateLimit-Reset": Math.ceil(limit.resetAt / 1000).toString(),
+        },
         status: Status.Created,
       });
     } catch (error) {
@@ -106,4 +178,4 @@ async function handler(req: Request): Promise<Response> {
 }
 
 console.log("Push notification server running on http://localhost:8000");
-await serve(handler, { port: 8000 });
+await serve(handler, { port: 8000 }); 

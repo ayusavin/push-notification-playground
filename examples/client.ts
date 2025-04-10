@@ -22,6 +22,26 @@ try {
     body: JSON.stringify({ message }),
   });
 
+  // Get rate limit info from headers
+  const rateLimit = {
+    limit: response.headers.get("X-RateLimit-Limit") || "unknown",
+    remaining: response.headers.get("X-RateLimit-Remaining") || "unknown",
+    reset: response.headers.get("X-RateLimit-Reset") || "unknown",
+  };
+  
+  console.log("Rate limit info:");
+  console.log(`  Limit: ${rateLimit.limit}`);
+  console.log(`  Remaining: ${rateLimit.remaining}`);
+  console.log(`  Reset: ${new Date(parseInt(rateLimit.reset, 10) * 1000).toLocaleString()}`);
+  
+  // Handle rate limit error
+  if (response.status === 429) {
+    const error = await response.json();
+    console.error("Rate limit exceeded!");
+    console.error(error.message);
+    Deno.exit(1);
+  }
+
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`Failed to send notification: ${response.status} - ${errorText}`);
