@@ -1,0 +1,17 @@
+{
+  "tasks": {
+    "dev": "deno run --watch --allow-net --allow-env --unstable-kv main.ts"
+  },
+  "imports": {
+    "@std/assert": "jsr:@std/assert@1",
+    "http/": "https://deno.land/std@0.207.0/http/"
+  },
+  "deploy": {
+    "project": "1b54b6a1-215c-4e0f-b1f5-843a13d5d74d",
+    "exclude": [
+      "**/node_modules"
+    ],
+    "include": [],
+    "entrypoint": "main.ts"
+  }
+}
