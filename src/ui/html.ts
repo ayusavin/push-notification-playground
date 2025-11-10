@@ -165,7 +165,10 @@ export function renderHtml(token: string): string {
     // Copy curl example to clipboard
     document.getElementById('curlExampleButton').addEventListener('click', function() {
       const token = document.getElementById('token').textContent;
-      const baseUrl = window.location.origin;
+      const protocol = window.location.protocol;
+      const hostname = window.location.hostname;
+      const port = window.location.port;
+      const baseUrl = port ? \`\${protocol}//\${hostname}:\${port}\` : \`\${protocol}//\${hostname}\`;
       const curlCommand = \`curl -X POST \${baseUrl}/api/v1/notify \\
   -H "Authorization: Bearer \${token}" \\
   -H "Content-Type: application/json" \\

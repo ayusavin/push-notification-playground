@@ -177,5 +177,5 @@ async function handler(req: Request): Promise<Response> {
   return new Response("Not Found", { status: Status.NotFound });
 }
 
-console.log("Push notification server running on http://localhost:8000");
-await serve(handler, { port: 8000 }); 
+const port = parseInt(Deno.env.get("PORT") || "8000");
+await serve(handler, { port });
